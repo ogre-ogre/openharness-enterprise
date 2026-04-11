@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenHarness Enterprise Server
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/oh-enterprise
+Environment="PATH=/opt/oh-enterprise/venv/bin"
+EnvironmentFile=/opt/oh-enterprise/.env
+ExecStart=/opt/oh-enterprise/venv/bin/python -m openharness.enterprise.server --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
