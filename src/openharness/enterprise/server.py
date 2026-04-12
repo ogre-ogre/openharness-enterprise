@@ -2234,8 +2234,26 @@ async def get_audit_logs(
 # Static Files (Frontend)
 # ============================================================================
 
-# Get web directory path (web/dist for built frontend)
-WEB_DIR = Path(__file__).parent.parent.parent.parent / "web" / "dist"
+# Get web directory path - try multiple possible locations
+# 1. Development: src/openharness/enterprise -> ../../../../web/dist
+# 2. Production: openharness/enterprise -> ../../../web/dist
+WEB_DIR_OPTIONS = [
+    Path(__file__).parent.parent.parent.parent / "web" / "dist",  # Development
+    Path(__file__).parent.parent.parent / "web" / "dist",  # Production (no src/)
+    Path(__file__).parent.parent / "web" / "dist",  # Alternative
+]
+
+WEB_DIR = None
+for option in WEB_DIR_OPTIONS:
+    if option.exists() and (option / "index.html").exists():
+        WEB_DIR = option
+        break
+
+if WEB_DIR is None:
+    # Fallback: try relative to cwd
+    WEB_DIR = Path.cwd() / "web" / "dist"
+    if not WEB_DIR.exists():
+        WEB_DIR = None
 
 # Mount static files if web directory exists
 if WEB_DIR.exists():
@@ -2245,15 +2263,25 @@ if WEB_DIR.exists():
     if (WEB_DIR / "assets").exists():
         app.mount("/assets", StaticFiles(directory=str(WEB_DIR / "assets")), name="assets")
     
+    # SPA routes for frontend routing
     @app.get("/")
     async def root():
         """Redirect to web frontend."""
         return FileResponse(str(WEB_DIR / "index.html"))
     
-    # SPA routes for frontend routing
+    @app.get("/login")
+    async def login_spa():
+        """SPA route for login page."""
+        return FileResponse(str(WEB_DIR / "index.html"))
+    
     @app.get("/admin")
     async def admin_spa():
         """SPA route for admin panel."""
+        return FileResponse(str(WEB_DIR / "index.html"))
+    
+    @app.get("/admin/{path:path}")
+    async def admin_sub_spa(path: str):
+        """SPA route for admin sub-pages."""
         return FileResponse(str(WEB_DIR / "index.html"))
     
     @app.get("/chat")

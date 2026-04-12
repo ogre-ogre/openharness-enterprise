@@ -4,6 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  base: '/web/',  // 前端部署在 /web/ 子路径下
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
