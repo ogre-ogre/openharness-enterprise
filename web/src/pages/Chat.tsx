@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layout, Button, Input, List, Tag, Dropdown, Space, message, Avatar, Popconfirm, Upload } from 'antd'
-import { SendOutlined, LogoutOutlined, PlusOutlined, UserOutlined, TeamOutlined, CloseOutlined, RobotOutlined, UploadOutlined } from '@ant-design/icons'
+import { SendOutlined, LogoutOutlined, PlusOutlined, UserOutlined, TeamOutlined, CloseOutlined, RobotOutlined, UploadOutlined, FileZipOutlined, FolderOutlined } from '@ant-design/icons'
 import type { MenuProps, UploadFile } from 'antd'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -352,14 +352,28 @@ export default function Chat() {
     { type: 'divider' },
   ]
 
-  // 所有用户都能访问管理后台（普通用户只能看到技能管理）
-  const adminLabel = user?.role === 'admin' ? '管理后台' : '技能管理'
-  userMenuItems.splice(2, 0, {
-    key: 'admin',
-    icon: <TeamOutlined />,
-    label: adminLabel,
-    onClick: () => navigate('/admin'),
-  })
+  // 管理员显示"管理后台"，普通用户显示"技能管理"和"文件管理"
+  if (user?.role === 'admin') {
+    userMenuItems.splice(2, 0, {
+      key: 'admin',
+      icon: <TeamOutlined />,
+      label: '管理后台',
+      onClick: () => navigate('/admin'),
+    })
+  } else {
+    userMenuItems.splice(2, 0, {
+      key: 'skills',
+      icon: <FileZipOutlined />,
+      label: '技能管理',
+      onClick: () => navigate('/admin/skills'),
+    })
+    userMenuItems.splice(3, 0, {
+      key: 'files',
+      icon: <FolderOutlined />,
+      label: '文件管理',
+      onClick: () => navigate('/admin/files'),
+    })
+  }
 
   userMenuItems.push({
     key: 'logout',
