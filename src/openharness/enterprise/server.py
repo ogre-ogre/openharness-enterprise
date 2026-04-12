@@ -1868,6 +1868,289 @@ async def delete_upload(filename: str, user: User = Depends(get_current_user)):
 
 
 # ============================================================================
+# File Management API (新增)
+# ============================================================================
+
+# 可删除的目录白名单
+DELETABLE_DIRS = {"uploads"}
+
+# 用户可访问的目录列表
+ACCESSIBLE_DIRS = ["uploads", "skills", "memory", "config", "knowledge"]
+
+# 打包下载大小限制 (100MB)
+MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024
+
+
+def get_user_root_dir(user_id: int) -> Path:
+    """Get user's root directory."""
+    return get_enterprise_root() / "users" / str(user_id)
+
+
+def _build_directory_tree(directory: Path, user_root: Path, relative_prefix: str = "") -> List[Dict]:
+    """Recursively build directory tree structure."""
+    items = []
+    
+    if not directory.exists():
+        return items
+    
+    for item in sorted(directory.iterdir()):
+        relative_path = f"{relative_prefix}/{item.name}" if relative_prefix else item.name
+        
+        if item.is_dir():
+            children = _build_directory_tree(item, user_root, relative_path)
+            items.append({
+                "key": relative_path,
+                "title": item.name,
+                "isLeaf": False,
+                "children": children if children else None
+            })
+        else:
+            items.append({
+                "key": relative_path,
+                "title": item.name,
+                "isLeaf": True,
+                "size": item.stat().st_size,
+                "modified_at": datetime.fromtimestamp(item.stat().st_mtime).isoformat()
+            })
+    
+    return items
+
+
+def _validate_path(path: str, user_root: Path) -> Path:
+    """Validate path is within user directory (prevent path traversal)."""
+    # Remove leading slash
+    clean_path = path.lstrip("/")
+    
+    # Build full path
+    full_path = user_root / clean_path
+    
+    # Resolve and check it's within user root
+    try:
+        resolved = full_path.resolve()
+        resolved.relative_to(user_root.resolve())
+        return resolved
+    except ValueError:
+        raise HTTPException(status_code=403, detail="路径访问被拒绝")
+
+
+def _get_directory_from_path(path: str) -> str:
+    """Get the top-level directory name from a path."""
+    parts = path.lstrip("/").split("/")
+    return parts[0] if parts else ""
+
+
+@app.get("/api/files/tree")
+async def get_file_tree(user: User = Depends(get_current_user)):
+    """获取用户目录树结构"""
+    user_root = get_user_root_dir(user.id)
+    
+    tree = []
+    for dir_name in ACCESSIBLE_DIRS:
+        dir_path = user_root / dir_name
+        if dir_path.exists():
+            children = _build_directory_tree(dir_path, user_root, dir_name)
+            tree.append({
+                "key": dir_name,
+                "title": dir_name,
+                "isLeaf": False,
+                "children": children if children else None
+            })
+        else:
+            tree.append({
+                "key": dir_name,
+                "title": dir_name,
+                "isLeaf": False,
+                "children": None
+            })
+    
+    return {"tree": tree}
+
+
+@app.get("/api/files/list")
+async def list_files(
+    path: str = Query("", description="Directory path relative to user root"),
+    user: User = Depends(get_current_user)
+):
+    """列出指定目录下的文件和子目录"""
+    user_root = get_user_root_dir(user.id)
+    
+    # Validate path
+    if path:
+        dir_path = _validate_path(path, user_root)
+    else:
+        dir_path = user_root
+    
+    if not dir_path.exists() or not dir_path.is_dir():
+        return {"path": path, "files": [], "folders": []}
+    
+    files = []
+    folders = []
+    
+    for item in sorted(dir_path.iterdir()):
+        relative_path = f"{path}/{item.name}" if path else item.name
+        top_dir = _get_directory_from_path(relative_path)
+        can_delete = top_dir in DELETABLE_DIRS
+        
+        if item.is_file():
+            files.append({
+                "name": item.name,
+                "path": relative_path,
+                "size": item.stat().st_size,
+                "type": "file",
+                "modified_at": datetime.fromtimestamp(item.stat().st_mtime).isoformat(),
+                "can_delete": can_delete
+            })
+        elif item.is_dir():
+            folders.append({
+                "name": item.name,
+                "path": relative_path,
+                "type": "folder",
+                "can_delete": can_delete
+            })
+    
+    return {"path": path, "files": files, "folders": folders}
+
+
+@app.post("/api/files/download")
+async def download_files(
+    items: List[str] = Body(..., description="List of file/folder paths to download"),
+    user: User = Depends(get_current_user)
+):
+    """打包下载选中的文件和文件夹"""
+    import io
+    import zipfile
+    
+    user_root = get_user_root_dir(user.id)
+    
+    # Validate all paths
+    validated_paths = []
+    total_size = 0
+    
+    for item_path in items:
+        full_path = _validate_path(item_path, user_root)
+        validated_paths.append((item_path, full_path))
+        
+        # Calculate size
+        if full_path.is_file():
+            total_size += full_path.stat().st_size
+        elif full_path.is_dir():
+            for f in full_path.rglob("*"):
+                if f.is_file():
+                    total_size += f.stat().st_size
+    
+    # Check size limit
+    if total_size > MAX_DOWNLOAD_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"文件总大小超过限制 ({MAX_DOWNLOAD_SIZE // (1024*1024)}MB)"
+        )
+    
+    # Create ZIP in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for item_path, full_path in validated_paths:
+            if full_path.is_file():
+                # Add file with relative path
+                zip_file.write(full_path, item_path.lstrip("/"))
+            elif full_path.is_dir():
+                # Add all files in directory
+                for f in full_path.rglob("*"):
+                    if f.is_file():
+                        rel_in_zip = f.relative_to(full_path)
+                        zip_file.write(f, f"{item_path.lstrip('/')}/{rel_in_zip}")
+    
+    zip_buffer.seek(0)
+    
+    # Return ZIP file
+    from fastapi.responses import StreamingResponse
+    
+    return StreamingResponse(
+        io.BytesIO(zip_buffer.read()),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=download_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        }
+    )
+
+
+@app.post("/api/files/delete")
+async def delete_files(
+    paths: List[str] = Body(..., description="List of file paths to delete"),
+    user: User = Depends(get_current_user)
+):
+    """删除文件（仅允许删除 uploads 目录下的文件）"""
+    user_root = get_user_root_dir(user.id)
+    audit = get_audit_logger()
+    
+    deleted = []
+    failed = []
+    
+    for file_path in paths:
+        # Check directory permission
+        top_dir = _get_directory_from_path(file_path)
+        if top_dir not in DELETABLE_DIRS:
+            failed.append({"path": file_path, "reason": "该目录下的文件不允许删除"})
+            continue
+        
+        # Validate and get full path
+        try:
+            full_path = _validate_path(file_path, user_root)
+        except HTTPException as e:
+            failed.append({"path": file_path, "reason": e.detail})
+            continue
+        
+        if not full_path.exists():
+            failed.append({"path": file_path, "reason": "文件不存在"})
+            continue
+        
+        try:
+            if full_path.is_file():
+                full_path.unlink()
+            elif full_path.is_dir():
+                import shutil
+                shutil.rmtree(full_path)
+            
+            deleted.append(file_path)
+            audit.log(
+                user_id=user.id,
+                action="file_delete",
+                resource_type="file",
+                resource_id=file_path
+            )
+        except Exception as e:
+            failed.append({"path": file_path, "reason": str(e)})
+    
+    return {
+        "success": len(deleted) > 0,
+        "deleted": deleted,
+        "failed": failed,
+        "message": f"已删除 {len(deleted)} 个文件/文件夹，失败 {len(failed)} 个"
+    }
+
+
+@app.get("/api/files/download/{file_path:path}")
+async def download_single_file(
+    file_path: str,
+    user: User = Depends(get_current_user)
+):
+    """下载单个文件"""
+    from fastapi.responses import FileResponse
+    
+    user_root = get_user_root_dir(user.id)
+    full_path = _validate_path(file_path, user_root)
+    
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    
+    return FileResponse(
+        path=str(full_path),
+        filename=full_path.name,
+        media_type="application/octet-stream"
+    )
+
+
+# ============================================================================
 # CLI Entry Point
 # ============================================================================
 

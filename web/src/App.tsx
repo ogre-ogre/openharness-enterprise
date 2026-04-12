@@ -10,6 +10,7 @@ import AgentManage from './pages/admin/AgentManage'
 import TeamManage from './pages/admin/TeamManage'
 import ToolManage from './pages/admin/ToolManage'
 import SkillManage from './pages/admin/SkillManage'
+import FileManage from './pages/admin/FileManage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuthStore()
@@ -45,6 +46,7 @@ function App() {
           <Route index element={<Navigate to="skills" replace />} />
           <Route path="users" element={<Users />} />
           <Route path="skills" element={<SkillManage />} />
+          <Route path="files" element={<FileManage />} />
           <Route path="agents" element={<AgentManage />} />
           <Route path="teams" element={<TeamManage />} />
           <Route path="tools" element={<ToolManage />} />

@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu } from 'antd'
-import { UserOutlined, DashboardOutlined, AuditOutlined, LogoutOutlined, RobotOutlined, TeamOutlined, ToolOutlined, FileZipOutlined } from '@ant-design/icons'
+import { UserOutlined, DashboardOutlined, AuditOutlined, LogoutOutlined, RobotOutlined, TeamOutlined, ToolOutlined, FileZipOutlined, FolderOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../../stores/auth'
 
 const { Sider, Content, Header } = Layout
@@ -12,10 +12,11 @@ export default function AdminLayout() {
 
   const isAdmin = user?.role === 'admin'
 
-  // 根据角色过滤菜单：普通用户只显示"技能管理"
+  // 根据角色过滤菜单：普通用户只显示"技能管理"和"文件管理"
   const allMenuItems = [
     { key: 'users', icon: <UserOutlined />, label: '用户管理', adminOnly: true },
     { key: 'skills', icon: <FileZipOutlined />, label: '技能管理', adminOnly: false },
+    { key: 'files', icon: <FolderOutlined />, label: '文件管理', adminOnly: false },
     { key: 'agents', icon: <RobotOutlined />, label: 'Agent 管理', adminOnly: true },
     { key: 'teams', icon: <TeamOutlined />, label: '团队管理', adminOnly: true },
     { key: 'tools', icon: <ToolOutlined />, label: '工具管理', adminOnly: true },
