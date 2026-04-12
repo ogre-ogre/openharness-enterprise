@@ -173,6 +173,7 @@ export default function SkillManage() {
             title: '技能名称',
             dataIndex: 'name',
             key: 'name',
+            width: '20%',
             render: (name: string, record: SkillInfo) => (
               <Space>
                 <FolderOutlined style={{ color: '#1890ff' }} />
@@ -187,13 +188,14 @@ export default function SkillManage() {
             title: '描述',
             dataIndex: 'description',
             key: 'description',
+            width: '60%',
             ellipsis: true,
             render: (desc: string) => desc || '-'
           },
           {
             title: '操作',
             key: 'action',
-            width: 100,
+            width: '20%',
             render: (_, record: SkillInfo) => (
               <Popconfirm
                 title="确定删除此技能？"
