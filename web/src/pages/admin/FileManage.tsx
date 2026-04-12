@@ -41,8 +41,8 @@ interface TreeData {
   children?: TreeData[]
 }
 
-// 可删除的目录列表
-const DELETABLE_DIRS = ['uploads']
+// 不可删除的目录列表（skills、memory、config 不能删除，其他都可以）
+const UNDELETABLE_DIRS = ['skills', 'memory', 'config']
 
 export default function FileManage() {
   const [treeData, setTreeData] = useState<DataNode[]>([])
@@ -198,7 +198,8 @@ export default function FileManage() {
 
   const canDeletePath = (path: string) => {
     const topDir = path.split('/')[0] || path
-    return DELETABLE_DIRS.includes(topDir)
+    // 只有 skills、memory、config 不能删除，其他都可以
+    return !UNDELETABLE_DIRS.includes(topDir)
   }
 
   const formatFileSize = (bytes: number) => {
@@ -325,7 +326,7 @@ export default function FileManage() {
 
             <Alert
               message="删除权限说明"
-              description="只有 uploads 目录下的文件可以删除。其他目录（skills、memory、config、knowledge）的文件请通过相应功能页面管理。"
+              description="skills、memory、config 目录下的文件不能删除（受保护目录）。其他目录（uploads、downloads、knowledge）的文件可以删除。"
               type="info"
               showIcon
               style={{ marginBottom: 16 }}

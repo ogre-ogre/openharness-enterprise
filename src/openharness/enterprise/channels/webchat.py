@@ -634,45 +634,67 @@ class AgentEngineInterface:
         
         # [重要] 添加用户 ID 信息，确保 LLM 知道当前用户
         user_id = user_context.user_id
+        downloads_path = user_context.downloads_path
         
         # Tool usage instructions - 使用动态 user_id（注意：花括号需要双写转义）
-        tool_instructions = f"""
+        tool_instructions = """
 
 ## 工具使用
 
 你可以使用以下工具来完成任务。当你需要使用工具时，请按照指定格式输出：
 
-**重要：当前用户 ID 是 {user_id}，所有文件操作都必须使用 .oh-enterprise/users/{user_id}/ 目录！**
+**重要：当前用户 ID 是 """ + str(user_id) + """
+
+### 文件路径说明
+
+- **用户工作区**: `.oh-enterprise/users/""" + str(user_id) + """/`
+- **默认下载目录**: `""" + downloads_path + """`（所有生成的文件应保存到此目录）
+- **上传文件目录**: `.oh-enterprise/users/""" + str(user_id) + """/uploads/`
+- **记忆文件目录**: `.oh-enterprise/users/""" + str(user_id) + """/memory/`
+
+**当执行 Python 代码生成文件时，必须使用下载目录！**
+
+示例：
+```python
+import os
+from pathlib import Path
+
+# 获取下载目录（已在上下文中指定）
+downloads_dir = Path(r"""" + downloads_path + """")
+downloads_dir.mkdir(parents=True, exist_ok=True)
+
+# 保存文件
+output_file = downloads_dir / "output.xlsx"
+wb.save(str(output_file))
+print("文件已保存到:", output_file)
+```
 
 ### read_file - 读取文件
 格式：read_file<file_path>文件路径</file_path>
-示例：read_file<file_path>.oh-enterprise/users/{user_id}/uploads/example.txt</file_path>
+示例：read_file<file_path>.oh-enterprise/users/""" + str(user_id) + """/uploads/example.txt</file_path>
 
 ### list_files - 列出目录文件
 格式：list_files<path>目录路径</path>
-示例：list_files<path>.oh-enterprise/users/{user_id}/uploads</path>
+示例：list_files<path>.oh-enterprise/users/""" + str(user_id) + """/uploads</path>
 
 ### write_file - 写入文件
 格式：write_file<file_path>文件路径</file_path><content>文件内容</content>
-示例：write_file<file_path>.oh-enterprise/users/{user_id}/memory/MEMORY.md</file_path><content># MEMORY.md</content>
+示例：write_file<file_path>.oh-enterprise/users/""" + str(user_id) + """/memory/MEMORY.md</file_path><content># MEMORY.md</content>
 
 ### rest_api_call - 执行 REST API 调用
 格式：rest_api_call<url>API地址</url><method>HTTP方法</method><body>请求体JSON</body>
-示例：rest_api_call<url>http://api.example.com/data</url><method>POST</method><body>{{"key": "value"}}</body>
+示例：rest_api_call<url>http://api.example.com/data</url><method>POST</method><body>{"key": "value"}</body>
 
 ### execute_command - 执行系统命令
 格式：execute_command<command>命令内容</command><timeout>超时秒数</timeout>
 示例：execute_command<command>node skills/prd-writer/generate-prd-docx.js "docs/input.md" "docs/output.docx"</command><timeout>60</timeout>
-示例：execute_command<command>cd .oh-enterprise && node scripts/example.js</command>
 
 注意：
 1. 文件路径使用相对路径，以 .oh-enterprise/ 开头
-2. **当前用户的文件目录是 .oh-enterprise/users/{user_id}/**
-3. 用户的上传文件位于 .oh-enterprise/users/{user_id}/uploads/ 目录
-4. 用户记忆文件位于 .oh-enterprise/users/{user_id}/memory/ 目录
-5. 当用户要求读取文件时，直接使用 read_file 工具
-6. 当需要调用外部 API 时，使用 rest_api_call 工具
-7. 当需要执行脚本或命令时，使用 execute_command 工具
+2. **生成文件时使用绝对路径 `""" + downloads_path + """`**
+3. 当用户要求读取文件时，直接使用 read_file 工具
+4. 当需要调用外部 API 时，使用 rest_api_call 工具
+5. 当需要执行脚本或命令时，使用 execute_command 工具
 """
         parts.append(tool_instructions)
         

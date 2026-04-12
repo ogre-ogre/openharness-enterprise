@@ -1871,8 +1871,8 @@ async def delete_upload(filename: str, user: User = Depends(get_current_user)):
 # File Management API (新增)
 # ============================================================================
 
-# 可删除的目录白名单
-DELETABLE_DIRS = {"uploads"}
+# 不可删除的目录黑名单（skills、memory、config 不能删除，其他都可以）
+UNDELETABLE_DIRS = {"skills", "memory", "config"}
 
 # 用户可访问的目录列表
 ACCESSIBLE_DIRS = ["uploads", "skills", "memory", "config", "knowledge", "downloads"]
@@ -1989,7 +1989,8 @@ async def list_files(
     for item in sorted(dir_path.iterdir()):
         relative_path = f"{path}/{item.name}" if path else item.name
         top_dir = _get_directory_from_path(relative_path)
-        can_delete = top_dir in DELETABLE_DIRS
+        # 只有 skills、memory、config 不能删除，其他都可以删除
+        can_delete = top_dir not in UNDELETABLE_DIRS
         
         if item.is_file():
             files.append({
@@ -2087,10 +2088,10 @@ async def delete_files(
     failed = []
     
     for file_path in paths:
-        # Check directory permission
+        # Check directory permission - skills/memory/config 不能删除
         top_dir = _get_directory_from_path(file_path)
-        if top_dir not in DELETABLE_DIRS:
-            failed.append({"path": file_path, "reason": "该目录下的文件不允许删除"})
+        if top_dir in UNDELETABLE_DIRS:
+            failed.append({"path": file_path, "reason": "该目录下的文件不允许删除（skills/memory/config 受保护）"})
             continue
         
         # Validate and get full path

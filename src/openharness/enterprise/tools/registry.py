@@ -402,6 +402,18 @@ class ToolExecutor:
         
         try:
             result = handler(**parameters)
+            
+            # [新增] 如果是 execute_command，附加环境变量提示
+            if tool_name == "execute_command" and isinstance(result, dict):
+                # 构建环境变量提示信息
+                env_hint = ""
+                if self._downloads_path:
+                    env_hint = f"\n\n📌 可用的环境变量:\n- OH_DOWNLOADS_PATH={self._downloads_path}\n- OH_USER_ID={self._current_user_id or 'unknown'}\n\n请使用 os.environ.get('OH_DOWNLOADS_PATH') 获取文件保存路径！"
+                    if "stdout" in result:
+                        result["stdout"] = result["stdout"] + env_hint
+                    elif "output" in result:
+                        result["output"] = str(result["output"]) + env_hint
+            
             return ToolResult(
                 success=True,
                 output=result,
