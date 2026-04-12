@@ -350,22 +350,23 @@ export default function Chat() {
       label: user?.display_name || user?.username,
     },
     { type: 'divider' },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      onClick: handleLogout,
-    },
   ]
 
-  if (user?.role === 'admin') {
-    userMenuItems.splice(2, 0, {
-      key: 'admin',
-      icon: <TeamOutlined />,
-      label: '管理后台',
-      onClick: () => navigate('/admin'),
-    })
-  }
+  // 所有用户都能访问管理后台（普通用户只能看到技能管理）
+  const adminLabel = user?.role === 'admin' ? '管理后台' : '技能管理'
+  userMenuItems.splice(2, 0, {
+    key: 'admin',
+    icon: <TeamOutlined />,
+    label: adminLabel,
+    onClick: () => navigate('/admin'),
+  })
+
+  userMenuItems.push({
+    key: 'logout',
+    icon: <LogoutOutlined />,
+    label: '退出登录',
+    onClick: handleLogout,
+  })
 
   return (
     <Layout style={{ height: '100vh' }}>
