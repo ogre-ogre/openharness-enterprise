@@ -55,22 +55,6 @@ mermaid.initialize({
     mirrorActors: true,
   },
   securityLevel: 'loose',
-  // 启用 xychart 支持（柱状图、折线图）
-  xychart: {
-    chartWidth: 600,
-    chartHeight: 400,
-    titleFontSize: 20,
-    titlePadding: 10,
-    xAxis: {
-      labelFontSize: 14,
-      labelPadding: 5,
-    },
-    yAxis: {
-      labelFontSize: 14,
-      labelPadding: 5,
-    },
-    plotReservedSpacePercent: 50,
-  },
 })
 
 interface MermaidRendererProps {
@@ -79,17 +63,57 @@ interface MermaidRendererProps {
 }
 
 /**
- * 从可能包含多个代码块的文本中提取第一个 mermaid 代码块
+ * 检测文本中是否包含未闭合的 mermaid 代码块
+ * 返回值：
+ *   - 'complete': 存在完整的 mermaid 代码块
+ *   - 'incomplete': 存在未闭合的 mermaid 代码块（正在输出）
+ *   - 'none': 不存在 mermaid 代码块
  */
-function extractMermaidCode(text: string): string | null {
-  // 尝试匹配 ```mermaid ... ``` 格式
-  const mermaidBlockMatch = text.match(/```mermaid\s*([\s\S]*?)```/)
-  if (mermaidBlockMatch) {
-    return mermaidBlockMatch[1].trim()
+function detectMermaidBlockStatus(text: string): { status: 'complete' | 'incomplete' | 'none'; code: string | null } {
+  // 检查是否有 ```mermaid 开始标记
+  const hasMermaidStart = text.includes('```mermaid')
+  
+  if (!hasMermaidStart) {
+    // 没有 mermaid 代码块标记，检查是否是纯 mermaid 代码
+    const trimmedText = text.trim()
+    const chartKeywords = [
+      'graph', 'flowchart', 'sequenceDiagram', 'classDiagram',
+      'stateDiagram', 'erDiagram', 'gantt', 'pie', 'mindmap',
+      'timeline', 'quadrantChart', 'requirementDiagram', 'gitgraph',
+      'xychart-beta', 'xychart'
+    ]
+    
+    const firstLine = trimmedText.split('\n')[0]?.trim().toLowerCase() || ''
+    const isPureMermaid = chartKeywords.some(kw => firstLine.startsWith(kw.toLowerCase()))
+    
+    if (isPureMermaid) {
+      // 纯 mermaid 代码，认为是完整的（来自非流式输出）
+      return { status: 'complete', code: trimmedText }
+    }
+    
+    return { status: 'none', code: null }
   }
   
-  // 如果没有明确的代码块标记，检查是否以图表类型关键字开头
-  const trimmedText = text.trim()
+  // 尝试匹配完整的 ```mermaid ... ``` 格式
+  const completeMatch = text.match(/```mermaid\s*([\s\S]*?)```/)
+  if (completeMatch) {
+    return { status: 'complete', code: completeMatch[1].trim() }
+  }
+  
+  // 有 ```mermaid 开始但没有闭合的 ```
+  // 这是流式输出中的未完成状态
+  return { status: 'incomplete', code: null }
+}
+
+/**
+ * 验证 mermaid 代码是否有效
+ */
+function isValidMermaidCode(code: string): boolean {
+  if (!code || code.trim().length < 5) return false
+  
+  const trimmedCode = code.trim()
+  
+  // 必须以图表类型关键字开头
   const chartKeywords = [
     'graph', 'flowchart', 'sequenceDiagram', 'classDiagram',
     'stateDiagram', 'erDiagram', 'gantt', 'pie', 'mindmap',
@@ -97,62 +121,10 @@ function extractMermaidCode(text: string): string | null {
     'xychart-beta', 'xychart'
   ]
   
-  const firstLine = trimmedText.split('\n')[0].trim().toLowerCase()
-  for (const kw of chartKeywords) {
-    if (firstLine.startsWith(kw.toLowerCase())) {
-      // 以图表关键字开头，尝试提取到可能的结束位置
-      // 简单处理：返回整个文本，让后续验证处理
-      return trimmedText
-    }
-  }
-  
-  return null
-}
-
-/**
- * 检查 Mermaid 代码是否看起来完整
- */
-function isMermaidCodeComplete(code: string): boolean {
-  if (!code || code.trim().length < 10) return false
-  
-  const trimmedCode = code.trim()
-  
-  // 基本的 mermaid 图表类型关键字
-  const mermaidKeywords = [
-    'graph', 'flowchart', 'sequenceDiagram', 'classDiagram',
-    'stateDiagram', 'erDiagram', 'gantt', 'pie', 'mindmap',
-    'timeline', 'quadrantChart', 'requirementDiagram', 'gitgraph',
-    'xychart-beta', 'xychart'
-  ]
-  
-  // 检查是否有图表类型关键字
-  const hasKeyword = mermaidKeywords.some(kw => 
-    trimmedCode.toLowerCase().startsWith(kw.toLowerCase()) ||
-    trimmedCode.toLowerCase().includes(kw.toLowerCase() + '\n') ||
-    trimmedCode.toLowerCase().includes(kw.toLowerCase() + ' ')
-  )
+  const firstLine = trimmedCode.split('\n')[0]?.trim().toLowerCase() || ''
+  const hasKeyword = chartKeywords.some(kw => firstLine.startsWith(kw.toLowerCase()))
   
   if (!hasKeyword) return false
-  
-  // 检查未闭合的括号
-  const hasUnclosedBracket = 
-    (trimmedCode.match(/\[/g)?.length !== trimmedCode.match(/\]/g)?.length) ||
-    (trimmedCode.match(/\(/g)?.length !== trimmedCode.match(/\)/g)?.length) ||
-    (trimmedCode.match(/{/g)?.length !== trimmedCode.match(/}/g)?.length)
-  
-  if (hasUnclosedBracket) return false
-  
-  // 检查未闭合的引号
-  const singleQuotes = trimmedCode.match(/'/g)?.length || 0
-  const doubleQuotes = trimmedCode.match(/"/g)?.length || 0
-  if (singleQuotes % 2 !== 0 || doubleQuotes % 2 !== 0) return false
-  
-  // xychart 特殊处理
-  if (trimmedCode.toLowerCase().startsWith('xychart')) {
-    // xychart 需要有 bar[] 或 line[] 才算完整
-    const hasBarOrLine = /\b(bar|line)\s*\[/.test(trimmedCode)
-    if (!hasBarOrLine) return false
-  }
   
   return true
 }
@@ -161,104 +133,93 @@ function isMermaidCodeComplete(code: string): boolean {
  * 生成图表的哈希值，用于判断代码是否真正变化
  */
 function hashChart(code: string): string {
-  // 简单哈希：提取关键字行
   const lines = code.trim().split('\n').filter(l => l.trim())
-  return lines.slice(0, 10).join('|') // 取前10行作为标识
+  return lines.slice(0, 5).join('|')
 }
 
 export default function MermaidRenderer({ chart, className }: MermaidRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   
-  // 使用 ref 来跟踪渲染状态
   const renderCountRef = useRef(0)
   const lastRenderedHashRef = useRef<string>('')
   const isRenderedRef = useRef(false)
 
   useEffect(() => {
-    // 提取 mermaid 代码
-    const mermaidCode = extractMermaidCode(chart)
+    // 检测 mermaid 代码块状态
+    const { status, code } = detectMermaidBlockStatus(chart)
     
-    // 如果已经渲染成功，且新的代码哈希没有变化，不重新渲染
-    if (isRenderedRef.current) {
-      const currentHash = hashChart(mermaidCode || chart)
-      if (currentHash === lastRenderedHashRef.current) {
-        return // 内容没有真正变化，保持当前渲染结果
-      }
+    // 如果不是 mermaid 内容，不渲染
+    if (status === 'none') {
+      return
     }
     
-    // 检查代码是否完整
-    const codeToRender = mermaidCode || chart
-    if (!isMermaidCodeComplete(codeToRender)) {
-      // 代码不完整时
-      if (!isRenderedRef.current && containerRef.current) {
-        // 还没有成功渲染过，显示等待状态
+    // 如果代码块未闭合（流式输出中），显示等待状态
+    if (status === 'incomplete') {
+      if (containerRef.current && !isRenderedRef.current) {
         containerRef.current.innerHTML = `
-          <div style="color: #94a3b8; text-align: center; padding: 20px;">
+          <div style="color: #64748b; text-align: center; padding: 16px; font-size: 14px;">
             <span style="animation: pulse 1.5s infinite;">正在生成图表...</span>
           </div>
           <style>
             @keyframes pulse {
-              0%, 100% { opacity: 0.5; }
+              0%, 100% { opacity: 0.4; }
               50% { opacity: 1; }
             }
           </style>
         `
       }
-      // 如果已经渲染成功，保持当前状态，不做任何改变
+      return // 等待完整输出
+    }
+    
+    // 代码块完整，检查是否有效
+    if (!code || !isValidMermaidCode(code)) {
       return
     }
-
+    
+    // 检查是否需要重新渲染（内容是否变化）
+    const currentHash = hashChart(code)
+    if (isRenderedRef.current && currentHash === lastRenderedHashRef.current) {
+      return // 内容没变，保持当前状态
+    }
+    
     // 延迟渲染，等待内容稳定
     const currentRenderId = ++renderCountRef.current
     
     const delayTimer = setTimeout(() => {
-      // 检查是否是最新的渲染请求
       if (currentRenderId !== renderCountRef.current) return
       
       const renderChart = async () => {
-        if (!containerRef.current) return
-        
-        setError(null)
+        if (!containerRef.current || !code) return
         
         try {
-          // Generate unique ID for this diagram
           const id = `mermaid-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`
+          const { svg } = await mermaid.render(id, code)
           
-          // Validate and render
-          const { svg } = await mermaid.render(id, codeToRender)
-          
-          // 再次确认这是最新的渲染结果
           if (currentRenderId === renderCountRef.current) {
             setRenderedSvg(svg)
             isRenderedRef.current = true
-            lastRenderedHashRef.current = hashChart(codeToRender)
+            lastRenderedHashRef.current = currentHash
             containerRef.current.innerHTML = svg
           }
         } catch (err) {
           console.error('Mermaid render error:', err)
           
-          // 只在最新的渲染请求中处理错误
-          if (currentRenderId === renderCountRef.current) {
-            // 如果之前没有成功渲染，显示错误
-            if (!isRenderedRef.current) {
-              setError('图表解析失败')
-              if (containerRef.current) {
-                containerRef.current.innerHTML = `<pre style="color: #f87171; background: #1f2937; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(codeToRender)}</pre>`
-              }
-            }
-            // 如果之前已经渲染成功，保持当前状态，不显示错误
+          // 如果之前已渲染成功，保持当前状态
+          if (!isRenderedRef.current && currentRenderId === renderCountRef.current && containerRef.current) {
+            containerRef.current.innerHTML = `
+              <pre style="color: #94a3b8; background: #1f2937; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 12px;">
+图表解析失败，请检查语法
+              </pre>
+            `
           }
         }
       }
 
       renderChart()
-    }, 300) // 300ms 延迟，等待流式输出稳定
+    }, 200)
     
-    return () => {
-      clearTimeout(delayTimer)
-    }
+    return () => clearTimeout(delayTimer)
   }, [chart])
 
   return (
@@ -276,11 +237,4 @@ export default function MermaidRenderer({ chart, className }: MermaidRendererPro
       }}
     />
   )
-}
-
-// HTML 转义函数
-function escapeHtml(text: string): string {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
 }

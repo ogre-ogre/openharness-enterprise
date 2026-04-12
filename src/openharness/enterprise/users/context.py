@@ -45,6 +45,7 @@ class UserContext(BaseModel):
     memory_path: str
     soul_path: str
     skills_path: Optional[str] = None
+    downloads_path: str = ""  # [新增] 默认文件生成路径
     
     # Content
     soul: str = ""
@@ -104,6 +105,13 @@ class ContextLoader:
         user_profile = self._load_file(workspace_path / "user.md")
         bootstrap = self._load_file(workspace_path / "BOOTSTRAP.md")
         
+        # [新增] Parse downloads path from user.md
+        downloads_path = self._parse_downloads_path(user_profile, workspace_path)
+        
+        # Ensure downloads directory exists
+        downloads_dir = Path(downloads_path)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        
         # Get available skills
         personal_skills = self._scan_skills(workspace_path / "skills")
         shared_skills = self._get_shared_skills_for_user(user.id)
@@ -121,6 +129,7 @@ class ContextLoader:
             memory_path=config.memory_path,
             soul_path=config.soul_path,
             skills_path=str(workspace_path / "skills"),
+            downloads_path=downloads_path,  # [新增]
             soul=soul,
             identity=identity,       # [新增]
             user_profile=user_profile,  # [新增]
@@ -148,6 +157,46 @@ class ContextLoader:
         
         # Build memory context (long-term + recent daily)
         return memory_mgr.build_memory_context(include_daily=True)
+    
+    def _parse_downloads_path(self, user_profile: str, workspace_path: Path) -> str:
+        """
+        [新增] Parse downloads path from user.md content.
+        
+        Looks for line like:
+        - **默认下载路径**: /path/to/downloads
+        
+        If not found, returns default: workspace_path / "downloads"
+        """
+        import re
+        
+        # Default path
+        default_path = str(workspace_path / "downloads")
+        
+        if not user_profile:
+            return default_path
+        
+        # Try to parse the downloads path from markdown
+        pattern = r"-\s*\*?\*?默认下载路径\*?\*?:\s*(.+?)(?:\n|$)"
+        match = re.search(pattern, user_profile)
+        
+        if match:
+            parsed_path = match.group(1).strip()
+            # Remove trailing comment (括号内容)
+            parsed_path = re.sub(r'\s*（.*?）\s*$', '', parsed_path)
+            parsed_path = parsed_path.strip()
+            
+            # If it's a relative path, resolve against workspace
+            if parsed_path and not Path(parsed_path).is_absolute():
+                # Check if it starts with workspace path prefix
+                if parsed_path.startswith(str(workspace_path)):
+                    return parsed_path
+                else:
+                    # Relative path - resolve against workspace
+                    return str(workspace_path / parsed_path)
+            
+            return parsed_path if parsed_path else default_path
+        
+        return default_path
     
     def _load_file(self, path: str | Path) -> str:
         """Load file content."""

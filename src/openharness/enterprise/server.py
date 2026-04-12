@@ -1875,7 +1875,7 @@ async def delete_upload(filename: str, user: User = Depends(get_current_user)):
 DELETABLE_DIRS = {"uploads"}
 
 # 用户可访问的目录列表
-ACCESSIBLE_DIRS = ["uploads", "skills", "memory", "config", "knowledge"]
+ACCESSIBLE_DIRS = ["uploads", "skills", "memory", "config", "knowledge", "downloads"]
 
 # 打包下载大小限制 (100MB)
 MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024

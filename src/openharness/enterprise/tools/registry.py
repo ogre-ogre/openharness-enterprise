@@ -338,6 +338,7 @@ class ToolExecutor:
         
         self._handlers: Dict[str, Callable] = {}
         self._current_user_id: Optional[int] = None
+        self._downloads_path: Optional[str] = None  # [新增] 用户下载路径
         
         # Register built-in handlers
         self._register_builtin_handlers()
@@ -345,6 +346,10 @@ class ToolExecutor:
     def set_user_id(self, user_id: Optional[int]) -> None:
         """Set the current user ID for permission checks."""
         self._current_user_id = user_id
+    
+    def set_downloads_path(self, downloads_path: Optional[str]) -> None:
+        """[新增] Set the user's downloads path for environment injection."""
+        self._downloads_path = downloads_path
     
     def _register_builtin_handlers(self) -> None:
         """Register built-in tool handlers."""
@@ -675,7 +680,24 @@ class ToolExecutor:
     # ========================================================================
     
     def _execute_command(self, command: str, timeout: int = 30) -> Dict:
-        """Execute system command."""
+        """Execute system command with user context environment variables."""
+        # [新增] 构建环境变量
+        env = os.environ.copy()
+        
+        # 注入用户上下文环境变量
+        if self._current_user_id is not None:
+            env["OH_USER_ID"] = str(self._current_user_id)
+            
+            # 用户工作区路径
+            user_workspace = Path.home() / ".oh-enterprise" / "users" / str(self._current_user_id)
+            env["OH_WORKSPACE_PATH"] = str(user_workspace)
+        
+        # 注入下载路径
+        if self._downloads_path:
+            env["OH_DOWNLOADS_PATH"] = self._downloads_path
+            # 确保目录存在
+            Path(self._downloads_path).mkdir(parents=True, exist_ok=True)
+        
         try:
             result = subprocess.run(
                 command,
@@ -683,14 +705,16 @@ class ToolExecutor:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=str(self.workspace_path)
+                cwd=str(self.workspace_path),
+                env=env  # [新增] 传递环境变量
             )
             
             return {
                 "exit_code": result.returncode,
                 "stdout": result.stdout,
                 "stderr": result.stderr,
-                "success": result.returncode == 0
+                "success": result.returncode == 0,
+                "downloads_path": self._downloads_path  # [新增] 返回下载路径信息
             }
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"Command timed out after {timeout} seconds")
@@ -943,7 +967,7 @@ class ToolRegistry:
             if tool.is_enabled
         ]
     
-    def execute_tool(self, name: str, parameters: Dict[str, Any], user_id: Optional[int] = None) -> ToolResult:
+    def execute_tool(self, name: str, parameters: Dict[str, Any], user_id: Optional[int] = None, downloads_path: Optional[str] = None) -> ToolResult:
         """Execute a tool with optional user context for permission checks."""
         tool = self.tools.get(name)
         if not tool:
@@ -959,6 +983,9 @@ class ToolRegistry:
                 output=None,
                 error=f"Tool '{name}' is disabled"
             )
+        
+        # [新增] 设置用户下载路径
+        self.executor.set_downloads_path(downloads_path)
         
         return self.executor.execute(name, parameters, user_id=user_id)
     

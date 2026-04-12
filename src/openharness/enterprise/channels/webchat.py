@@ -232,15 +232,23 @@ class AgentEngineInterface:
                 return {"tool": tool_name, "params": params}
         return None
     
-    def _execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a tool call with user permission check."""
+    def _execute_tool(self, tool_call: Dict[str, Any], user_context: UserContext) -> Dict[str, Any]:
+        """Execute a tool call with user permission check and context injection."""
         tool_name = tool_call["tool"]
         params = tool_call["params"]
         
         print(f"[Agent] Executing tool: {tool_name} with params: {params}, user_id: {self.user_id}")
         
-        # Execute with user_id for permission check
-        result = self.tool_registry.execute_tool(tool_name, params, user_id=self.user_id)
+        # [新增] 传递 downloads_path 到工具执行
+        downloads_path = user_context.downloads_path if user_context else None
+        
+        # Execute with user_id for permission check and downloads_path for env injection
+        result = self.tool_registry.execute_tool(
+            tool_name, 
+            params, 
+            user_id=self.user_id,
+            downloads_path=downloads_path
+        )
         
         return {
             "tool": tool_name,
@@ -361,8 +369,8 @@ class AgentEngineInterface:
                 tool_call = self._parse_tool_call(full_response)
                 
                 if tool_call:
-                    # Execute tool
-                    tool_result = self._execute_tool(tool_call)
+                    # Execute tool with user context
+                    tool_result = self._execute_tool(tool_call, user_context)
                     last_tool_result = tool_result
                     
                     # Send tool result to client

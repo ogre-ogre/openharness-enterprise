@@ -218,6 +218,9 @@ class WorkspaceManager:
         user_path = workspace_path / "user.md"
         
         if not user_path.exists():
+            # 默认下载路径
+            default_download_path = str(workspace_path / "downloads")
+            
             content = f"""# USER.md - 关于我的用户
 
 ## 基本信息
@@ -226,6 +229,11 @@ class WorkspaceManager:
 - **称呼**: 
 - **时区**: 
 - **语言**: 
+
+## 文件配置
+
+- **默认下载路径**: {default_download_path}
+  （所有技能生成的文件将保存到此目录）
 
 ## 工作偏好
 
@@ -262,6 +270,10 @@ class WorkspaceManager:
 *此文件会在首次对话时由 AI 自动学习并填充。*
 """
             user_path.write_text(content, encoding="utf-8")
+            
+            # 创建 downloads 目录
+            downloads_dir = workspace_path / "downloads"
+            downloads_dir.mkdir(exist_ok=True)
     
     def _create_bootstrap(self, workspace_path: Path, user: User) -> None:
         """
