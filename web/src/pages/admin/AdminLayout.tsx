@@ -50,7 +50,7 @@ export default function AdminLayout() {
           fontSize: 18,
           fontWeight: 'bold'
         }}>
-          {isAdmin ? '管理后台' : '技能管理'}
+          {isAdmin ? '管理后台' : '技能与文件管理'}
         </div>
         <Menu
           theme="dark"

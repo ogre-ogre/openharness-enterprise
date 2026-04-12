@@ -7,7 +7,7 @@ FastAPI application entry point.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
