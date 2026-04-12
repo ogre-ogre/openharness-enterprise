@@ -14,11 +14,10 @@ const { Title, Text } = Typography
 
 interface SkillInfo {
   name: string
+  title: string
   description: string
   path: string
   has_skill_md: boolean
-  file_count: number
-  created_at?: string
 }
 
 interface SkillsData {
@@ -190,13 +189,6 @@ export default function SkillManage() {
             key: 'description',
             ellipsis: true,
             render: (desc: string) => desc || '-'
-          },
-          {
-            title: '文件数',
-            dataIndex: 'file_count',
-            key: 'file_count',
-            width: 80,
-            render: (count: number) => <Tag>{count}</Tag>
           },
           {
             title: '操作',

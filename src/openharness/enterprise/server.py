@@ -829,6 +829,7 @@ def _scan_skills_directory(directory: Path) -> List[Dict[str, Any]]:
             if skill_file.exists():
                 try:
                     content = skill_file.read_text(encoding="utf-8")
+                    
                     # Extract title from first heading
                     title = skill_dir.name
                     for line in content.split("\n")[:10]:
@@ -836,11 +837,38 @@ def _scan_skills_directory(directory: Path) -> List[Dict[str, Any]]:
                             title = line[2:].strip()
                             break
                     
+                    # Extract description from YAML front matter
+                    description = ""
+                    if content.startswith("---"):
+                        # Find the end of front matter
+                        end_idx = content.find("---", 3)
+                        if end_idx != -1:
+                            front_matter = content[3:end_idx].strip()
+                            # Parse description from front matter
+                            for line in front_matter.split("\n"):
+                                if line.startswith("description:"):
+                                    # Handle both quoted and unquoted descriptions
+                                    desc_value = line[len("description:"):].strip()
+                                    # Remove quotes if present
+                                    if desc_value.startswith('"') and desc_value.endswith('"'):
+                                        description = desc_value[1:-1]
+                                    elif desc_value.startswith("'") and desc_value.endswith("'"):
+                                        description = desc_value[1:-1]
+                                    else:
+                                        description = desc_value
+                                    break
+                    
+                    # Count files in skill directory
+                    file_count = len([f for f in skill_dir.iterdir() if f.is_file()])
+                    
                     skills.append({
                         "name": skill_dir.name,
                         "title": title,
+                        "description": description,
                         "path": str(skill_dir),
-                        "type": "skill"
+                        "type": "skill",
+                        "has_skill_md": True,
+                        "file_count": file_count
                     })
                 except Exception:
                     pass
