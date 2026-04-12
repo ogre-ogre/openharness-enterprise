@@ -877,23 +877,21 @@ async def list_manageable_skills(user: User = Depends(get_current_user)):
     """
     List all skills the user can manage.
     
-    - Admin: sees all shared skills
+    - Admin: sees shared skills + personal skills
     - Regular user: sees shared skills + personal skills
     """
     shared_skills_path = get_shared_root() / "skills"
     shared_skills = _scan_skills_directory(shared_skills_path)
     
+    # 所有用户都能看到自己的个人技能
+    user_skills_path = get_enterprise_root() / "users" / str(user.id) / "skills"
+    personal_skills = _scan_skills_directory(user_skills_path)
+    
     result = {
         "shared": shared_skills,
-        "personal": [],
+        "personal": personal_skills,
         "is_admin": user.role == "admin"
     }
-    
-    # Regular users also see their personal skills
-    if user.role != "admin":
-        user_skills_path = get_enterprise_root() / "users" / str(user.id) / "skills"
-        personal_skills = _scan_skills_directory(user_skills_path)
-        result["personal"] = personal_skills
     
     return result
 
@@ -927,6 +925,7 @@ async def upload_personal_skill(
     
     - Admin: uploads to shared directory
     - Regular user: uploads to personal directory
+    - Regular user: skill name cannot duplicate shared skill names
     """
     import zipfile
     import shutil
@@ -935,6 +934,9 @@ async def upload_personal_skill(
     if not file.filename or not file.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="只支持 ZIP 文件格式")
     
+    # Extract skill name from filename
+    skill_name = file.filename[:-4]
+    
     # Determine upload path based on role
     if user.role == "admin":
         skills_path = get_shared_root() / "skills"
@@ -942,6 +944,15 @@ async def upload_personal_skill(
     else:
         skills_path = get_enterprise_root() / "users" / str(user.id) / "skills"
         skill_type = "personal"
+        
+        # [新增] 普通用户上传时检查是否与共享技能重复
+        shared_skills_path = get_shared_root() / "skills"
+        shared_skill_names = [s["name"] for s in _scan_skills_directory(shared_skills_path)]
+        if skill_name in shared_skill_names:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"技能名称 '{skill_name}' 与共享技能重复，请使用其他名称"
+            )
     
     skills_path.mkdir(parents=True, exist_ok=True)
     

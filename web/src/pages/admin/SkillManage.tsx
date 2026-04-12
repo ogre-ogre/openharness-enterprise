@@ -245,6 +245,9 @@ export default function SkillManage() {
             <p>1. 技能文件必须是 ZIP 格式，解压后应包含 SKILL.md 文件</p>
             <p>2. ZIP 文件名将成为技能名称（去除 .zip 后缀）</p>
             <p>3. {isAdmin ? '管理员上传的技能将共享给所有用户' : '上传的技能仅自己可用'}</p>
+            {!isAdmin && (
+              <p style={{ color: '#ff4d4f' }}>4. 技能名称不能与共享技能重复</p>
+            )}
           </div>
         }
         type="info"
@@ -282,15 +285,16 @@ export default function SkillManage() {
         'shared',
         '共享技能',
         <GlobalOutlined style={{ color: '#1890ff' }} />,
-        isAdmin
+        isAdmin  // 只有管理员可以删除共享技能
       )}
 
-      {!isAdmin && renderSkillTable(
+      {/* 管理员和普通用户都显示个人技能，都可以删除 */}
+      {renderSkillTable(
         skillsData.personal,
         'personal',
-        '个人技能',
+        '我的技能',
         <UserOutlined style={{ color: '#52c41a' }} />,
-        true
+        true  // 所有人都可以删除自己的技能
       )}
 
       <Modal

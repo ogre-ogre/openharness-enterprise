@@ -11,15 +11,11 @@ import TeamManage from './pages/admin/TeamManage'
 import ToolManage from './pages/admin/ToolManage'
 import SkillManage from './pages/admin/SkillManage'
 
-function PrivateRoute({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) {
+function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuthStore()
   
   if (!token) {
     return <Navigate to="/login" replace />
-  }
-  
-  if (adminOnly && user?.role !== 'admin') {
-    return <Navigate to="/chat" replace />
   }
   
   return <>{children}</>
@@ -41,12 +37,12 @@ function App() {
         <Route
           path="/admin"
           element={
-            <PrivateRoute adminOnly>
+            <PrivateRoute>
               <AdminLayout />
             </PrivateRoute>
           }
         >
-          <Route index element={<Navigate to="users" replace />} />
+          <Route index element={<Navigate to="skills" replace />} />
           <Route path="users" element={<Users />} />
           <Route path="skills" element={<SkillManage />} />
           <Route path="agents" element={<AgentManage />} />

@@ -10,18 +10,23 @@ export default function AdminLayout() {
   const location = useLocation()
   const { logout, user } = useAuthStore()
 
-  const menuItems = [
-    { key: 'users', icon: <UserOutlined />, label: '用户管理' },
-    { key: 'skills', icon: <FileZipOutlined />, label: '技能管理' },
-    { key: 'agents', icon: <RobotOutlined />, label: 'Agent 管理' },
-    { key: 'teams', icon: <TeamOutlined />, label: '团队管理' },
-    { key: 'tools', icon: <ToolOutlined />, label: '工具管理' },
-    { key: 'status', icon: <DashboardOutlined />, label: '系统状态' },
-    { key: 'audit', icon: <AuditOutlined />, label: '审计日志' },
+  const isAdmin = user?.role === 'admin'
+
+  // 根据角色过滤菜单：普通用户只显示"技能管理"
+  const allMenuItems = [
+    { key: 'users', icon: <UserOutlined />, label: '用户管理', adminOnly: true },
+    { key: 'skills', icon: <FileZipOutlined />, label: '技能管理', adminOnly: false },
+    { key: 'agents', icon: <RobotOutlined />, label: 'Agent 管理', adminOnly: true },
+    { key: 'teams', icon: <TeamOutlined />, label: '团队管理', adminOnly: true },
+    { key: 'tools', icon: <ToolOutlined />, label: '工具管理', adminOnly: true },
+    { key: 'status', icon: <DashboardOutlined />, label: '系统状态', adminOnly: true },
+    { key: 'audit', icon: <AuditOutlined />, label: '审计日志', adminOnly: true },
   ]
 
+  const menuItems = allMenuItems.filter(item => isAdmin || !item.adminOnly)
+
   // Get current selected key from path
-  const currentKey = location.pathname.split('/').pop() || 'users'
+  const currentKey = location.pathname.split('/').pop() || 'skills'
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(`/admin/${key}`)
@@ -44,7 +49,7 @@ export default function AdminLayout() {
           fontSize: 18,
           fontWeight: 'bold'
         }}>
-          管理后台
+          {isAdmin ? '管理后台' : '技能管理'}
         </div>
         <Menu
           theme="dark"
@@ -63,7 +68,7 @@ export default function AdminLayout() {
           alignItems: 'center'
         }}>
           <div style={{ fontSize: 16 }}>
-            管理员: {user?.display_name || user?.username}
+            {isAdmin ? '管理员' : '用户'}: {user?.display_name || user?.username}
           </div>
           <div>
             <a onClick={() => navigate('/chat')} style={{ marginRight: 16 }}>
