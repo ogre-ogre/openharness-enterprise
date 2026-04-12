@@ -40,9 +40,9 @@ push_result = subprocess.run(
 )
 
 if push_result.returncode == 0:
-    print("  ✓ GitHub 推送成功")
+    print("  [OK] GitHub 推送成功")
 else:
-    print(f"  ⚠ GitHub 推送失败: {push_result.stderr}")
+    print(f"  [WARN] GitHub 推送失败: {push_result.stderr}")
     print("  将继续尝试同步服务器...")
 
 # Step 2: SSH 连接服务器
@@ -52,9 +52,9 @@ ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
 try:
     ssh.connect(host, username=username, password=password, timeout=10)
-    print("  ✓ 已连接到服务器")
+    print("  [OK] 已连接到服务器")
 except Exception as e:
-    print(f"  ✗ 连接失败: {e}")
+    print(f"  [FAIL] 连接失败: {e}")
     sys.exit(1)
 
 try:
@@ -68,11 +68,11 @@ try:
     pull_error = stderr.read().decode()
     
     if "Already up to date" in pull_output or pull_output.strip() == "":
-        print("  ✓ 代码已是最新")
+        print("  [OK] 代码已是最新")
     elif pull_error:
-        print(f"  ⚠ 同步警告: {pull_error}")
+        print(f"  [WARN] 同步警告: {pull_error}")
     else:
-        print(f"  ✓ 代码已更新: {pull_output.strip()}")
+        print(f"  [OK] 代码已更新: {pull_output.strip()}")
     
     # Step 4: 构建前端并重启服务
     print("\n[4/5] 构建前端并重启服务...")
@@ -84,7 +84,7 @@ try:
         "sleep 2"
     )
     stdout.read()
-    print("  ✓ 已停止旧服务")
+    print("  [OK] 已停止旧服务")
     
     # 启动服务（包含前端构建）
     stdin, stdout, stderr = ssh.exec_command(f'''
@@ -125,9 +125,9 @@ tail -15 ~/.oh-enterprise/logs/server.log
     health = stdout.read().decode().strip()
     
     if "healthy" in health:
-        print(f"  ✓ 健康检查: {health}")
+        print(f"  [OK] 健康检查: {health}")
     else:
-        print(f"  ⚠ 健康检查: {health or '无响应'}")
+        print(f"  [WARN] 健康检查: {health or '无响应'}")
     
     # API docs check
     stdin, stdout, stderr = ssh.exec_command(
@@ -137,7 +137,7 @@ tail -15 ~/.oh-enterprise/logs/server.log
     docs_title = stdout.read().decode().strip()
     
     if docs_title:
-        print(f"  ✓ API 文档: {docs_title}")
+        print(f"  [OK] API 文档: {docs_title}")
     
     # Web UI check
     stdin, stdout, stderr = ssh.exec_command(
@@ -147,7 +147,7 @@ tail -15 ~/.oh-enterprise/logs/server.log
     web_title = stdout.read().decode().strip()
     
     if web_title:
-        print(f"  ✓ 前端页面: {web_title}")
+        print(f"  [OK] 前端页面: {web_title}")
     
     # 打印访问地址
     print("\n" + "=" * 60)
@@ -160,7 +160,7 @@ tail -15 ~/.oh-enterprise/logs/server.log
     print("=" * 60)
 
 except Exception as e:
-    print(f"\n✗ 执行失败: {e}")
+    print(f"\n[FAIL] 执行失败: {e}")
     
     # 打印错误日志
     stdin, stdout, stderr = ssh.exec_command(
