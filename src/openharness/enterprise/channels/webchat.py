@@ -273,8 +273,8 @@ class AgentEngineInterface:
         # Build messages for LLM
         messages = conversation_history + [{"role": "user", "content": message}]
         
-        # Build system prompt from user context
-        system_prompt = self._build_system_prompt(user_context)
+        # Build system prompt from user context (with smart memory injection)
+        system_prompt = self._build_system_prompt(user_context, message)
         
         # Yield thinking status
         yield ServerMessage(
@@ -310,8 +310,9 @@ class AgentEngineInterface:
             print(f"[Agent] Calling LLM: {config.provider} / {config.model}")
             llm_client = get_llm_client()
             
-            # Tool calling loop - max 5 iterations to prevent infinite loops
-            max_iterations = 5
+            # Tool calling loop - 使用配置管理获取最大迭代次数
+            from openharness.enterprise.config.settings import get_settings
+            max_iterations = get_settings().max_iterations
             iteration = 0
             last_tool_result = None
             
@@ -407,7 +408,9 @@ class AgentEngineInterface:
             
             # Signal completion
             # 文件日志确认即将完成
-            with open('C:/Users/20171/.oh-enterprise/memory_debug.log', 'a', encoding='utf-8') as f:
+            from openharness.enterprise.config.settings import get_settings
+            debug_log = get_settings().debug_log
+            with open(debug_log, 'a', encoding='utf-8') as f:
                 f.write(f"[{datetime.now()}] About to yield done, full_response length: {len(full_response)}\n")
             
             yield ServerMessage(
@@ -417,7 +420,7 @@ class AgentEngineInterface:
             )
             
             # 文件日志确认 done 已 yield
-            with open('C:/Users/20171/.oh-enterprise/memory_debug.log', 'a', encoding='utf-8') as f:
+            with open(debug_log, 'a', encoding='utf-8') as f:
                 f.write(f"[{datetime.now()}] Done yielded, calling memory update...\n")
             
             # Smart memory update - summarize and save important info
@@ -431,6 +434,27 @@ class AgentEngineInterface:
                 )
             except Exception as mem_error:
                 print(f"[Memory] Memory update error: {mem_error}")
+            
+            # [新增] 首次对话学习 - 检查是否有 BOOTSTRAP.md
+            try:
+                from openharness.enterprise.users.learning import get_learning_engine
+                from openharness.enterprise.users.workspace import get_user_workspace_path
+                
+                bootstrap_path = get_user_workspace_path(self.user_id) / "BOOTSTRAP.md"
+                if bootstrap_path.exists():
+                    # 首次对话完成，学习用户信息
+                    learning_engine = get_learning_engine(self.user_id)
+                    
+                    # 构建消息列表用于学习
+                    learn_messages = conversation_history + [
+                        {"role": "user", "content": message},
+                        {"role": "assistant", "content": full_response}
+                    ]
+                    
+                    result = learning_engine.learn_from_first_conversation(learn_messages)
+                    print(f"[Learning] First conversation learning result: {result}")
+            except Exception as learn_error:
+                print(f"[Learning] Learning error: {learn_error}")
             
         except Exception as e:
             print(f"[Agent] Error: {e}")
@@ -448,7 +472,9 @@ class AgentEngineInterface:
         conversation_history: List[Dict[str, str]]
     ) -> None:
         # 文件日志确认函数被调用
-        with open('C:/Users/20171/.oh-enterprise/memory_debug.log', 'a', encoding='utf-8') as f:
+        from openharness.enterprise.config.settings import get_settings
+        debug_log = get_settings().debug_log
+        with open(debug_log, 'a', encoding='utf-8') as f:
             f.write(f"[{datetime.now()}] _update_memory_smart called: {user_message[:30]}...\n")
         print(f"[Memory] _update_memory_smart called, user_message: {user_message[:30]}...")
         """
@@ -583,34 +609,48 @@ class AgentEngineInterface:
         except Exception as e:
             print(f"[Memory] Memory summarization error: {e}")
     
-    def _build_system_prompt(self, user_context: UserContext) -> str:
-        """Build system prompt from user context."""
+    def _build_system_prompt(
+        self, 
+        user_context: UserContext,
+        user_message: str = ""
+    ) -> str:
+        """
+        Build system prompt from user context.
+        
+        [新增] 智能记忆注入 - 采用关键词触发策略
+        """
         parts = []
         
         # Base identity
         parts.append("你是一个有帮助的 AI 助手。")
         
-        # Tool usage instructions
-        tool_instructions = """
+        # [重要] 添加用户 ID 信息，确保 LLM 知道当前用户
+        user_id = user_context.user_id
+        
+        # Tool usage instructions - 使用动态 user_id（注意：花括号需要双写转义）
+        tool_instructions = f"""
 
 ## 工具使用
 
 你可以使用以下工具来完成任务。当你需要使用工具时，请按照指定格式输出：
 
+**重要：当前用户 ID 是 {user_id}，所有文件操作都必须使用 .oh-enterprise/users/{user_id}/ 目录！**
+
 ### read_file - 读取文件
 格式：read_file<file_path>文件路径</file_path>
-示例：read_file<file_path>.oh-enterprise/users/1/uploads/example.txt</file_path>
+示例：read_file<file_path>.oh-enterprise/users/{user_id}/uploads/example.txt</file_path>
 
 ### list_files - 列出目录文件
 格式：list_files<path>目录路径</path>
-示例：list_files<path>.oh-enterprise/users/1/uploads</path>
+示例：list_files<path>.oh-enterprise/users/{user_id}/uploads</path>
 
 ### write_file - 写入文件
 格式：write_file<file_path>文件路径</file_path><content>文件内容</content>
+示例：write_file<file_path>.oh-enterprise/users/{user_id}/memory/MEMORY.md</file_path><content># MEMORY.md</content>
 
 ### rest_api_call - 执行 REST API 调用
 格式：rest_api_call<url>API地址</url><method>HTTP方法</method><body>请求体JSON</body>
-示例：rest_api_call<url>http://api.example.com/data</url><method>POST</method><body>{"key": "value"}</body>
+示例：rest_api_call<url>http://api.example.com/data</url><method>POST</method><body>{{"key": "value"}}</body>
 
 ### execute_command - 执行系统命令
 格式：execute_command<command>命令内容</command><timeout>超时秒数</timeout>
@@ -619,17 +659,38 @@ class AgentEngineInterface:
 
 注意：
 1. 文件路径使用相对路径，以 .oh-enterprise/ 开头
-2. 用户的上传文件位于 .oh-enterprise/users/1/uploads/ 目录
-3. 当用户要求读取文件时，直接使用 read_file 工具
-4. 当需要调用外部 API 时，使用 rest_api_call 工具
-5. 当需要执行脚本或命令时，使用 execute_command 工具
-6. execute_command 默认超时 30 秒，长时间任务请指定 timeout
+2. **当前用户的文件目录是 .oh-enterprise/users/{user_id}/**
+3. 用户的上传文件位于 .oh-enterprise/users/{user_id}/uploads/ 目录
+4. 用户记忆文件位于 .oh-enterprise/users/{user_id}/memory/ 目录
+5. 当用户要求读取文件时，直接使用 read_file 工具
+6. 当需要调用外部 API 时，使用 rest_api_call 工具
+7. 当需要执行脚本或命令时，使用 execute_command 工具
 """
         parts.append(tool_instructions)
         
         # Add user soul if available
         if user_context.soul:
             parts.append(f"\n\n以下是你的个性化设置：\n{user_context.soul}")
+        
+        # [新增] Add identity if available
+        if user_context.identity and user_context.identity.strip():
+            # 检查是否有实际内容（不只是空模板）
+            if not user_context.identity.strip().endswith("自动填充"):
+                parts.append(f"\n\n## 你的身份\n\n{user_context.identity}")
+        
+        # [新增] Add user profile if available
+        if user_context.user_profile and user_context.user_profile.strip():
+            # 检查是否有实际内容
+            if not user_context.user_profile.strip().endswith("自动学习并填充"):
+                parts.append(f"\n\n## 用户信息\n\n{user_context.user_profile}")
+        
+        # [新增] Add bootstrap for first-time onboarding
+        if user_context.bootstrap and user_context.bootstrap.strip():
+            parts.append(f"\n\n## 首次启动引导\n\n{user_context.bootstrap}")
+        
+        # [修改] 直接注入记忆（不再使用关键词触发）
+        if user_context.memory and user_context.memory.strip():
+            parts.append(f"\n\n## 历史记忆\n\n{user_context.memory}")
         
         return "\n".join(parts)
     
@@ -809,6 +870,10 @@ class WebChatChannel:
             fresh_context = load_user_context(user)
             user_context.available_skills = fresh_context.available_skills
             user_context.soul = fresh_context.soul
+            user_context.identity = fresh_context.identity       # [新增]
+            user_context.user_profile = fresh_context.user_profile  # [新增]
+            user_context.bootstrap = fresh_context.bootstrap     # [新增]
+            user_context.memory = fresh_context.memory
             user_context.preferences = fresh_context.preferences
             
             await websocket.send_text(ServerMessage(
@@ -830,6 +895,11 @@ class WebChatChannel:
         # Reload skills before each message to ensure fresh content
         fresh_context = load_user_context(user)
         user_context.available_skills = fresh_context.available_skills
+        user_context.soul = fresh_context.soul
+        user_context.identity = fresh_context.identity           # [新增]
+        user_context.user_profile = fresh_context.user_profile   # [新增]
+        user_context.bootstrap = fresh_context.bootstrap         # [新增]
+        user_context.memory = fresh_context.memory
         
         # Get conversation history
         history = self.message_store.get_conversation_history(session.id)

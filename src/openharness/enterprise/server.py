@@ -86,12 +86,46 @@ async def lifespan(app: FastAPI):
     # Ensure admin user exists
     _ensure_admin_user()
     
+    # [新增] Initialize Meditate scheduler
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from openharness.enterprise.users.meditate import get_meditate_scheduler
+        
+        scheduler = AsyncIOScheduler()
+        
+        # 每天凌晨 3:00 执行 Meditate
+        scheduler.add_job(
+            _run_meditate_daily,
+            'cron',
+            hour=3,
+            minute=0,
+            id='meditate_daily'
+        )
+        
+        scheduler.start()
+        app.state.scheduler = scheduler
+        print("[+] Meditate scheduler started (daily at 3:00 AM)")
+    except ImportError:
+        print("[!] APScheduler not installed, Meditate scheduler disabled")
+    except Exception as e:
+        print(f"[!] Meditate scheduler error: {e}")
+    
     print("[OK] OpenHarness Enterprise ready!")
     
     yield
     
     # Shutdown
     print("[*] Shutting down OpenHarness Enterprise...")
+
+
+def _run_meditate_daily():
+    """每日 Meditate 任务"""
+    from openharness.enterprise.users.meditate import get_meditate_scheduler
+    
+    print("[Meditate] Starting daily meditate...")
+    scheduler = get_meditate_scheduler()
+    results = scheduler.run_daily()
+    print(f"[Meditate] Completed: {len(results)} users processed")
 
 
 def _ensure_admin_user() -> None:
@@ -629,6 +663,154 @@ async def delete_session(
     )
     
     return {"status": "deleted", "message": "会话已删除"}
+
+
+# ============================================================================
+# Context & Session Restore API [新增]
+# ============================================================================
+
+@app.get("/api/context")
+async def get_user_context(
+    user: User = Depends(get_current_user)
+):
+    """[新增] 获取当前用户完整上下文"""
+    from openharness.enterprise.users.context import load_user_context
+    from openharness.enterprise.users.memory import get_memory_manager
+    
+    context = load_user_context(user)
+    memory_mgr = get_memory_manager(user.id)
+    
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "soul": context.soul,
+        "identity": context.identity,
+        "user_profile": context.user_profile,
+        "has_bootstrap": bool(context.bootstrap),
+        "memory": {
+            "long_term": memory_mgr.read_memory(),
+            "recent_daily": memory_mgr.read_all_daily(limit=7)
+        },
+        "preferences": context.preferences
+    }
+
+
+@app.post("/api/sessions/{session_id}/restore")
+async def restore_session(
+    session_id: str,
+    user: User = Depends(get_current_user)
+):
+    """[新增] 恢复会话完整上下文"""
+    from openharness.enterprise.users.restorer import get_session_restorer
+    
+    restorer = get_session_restorer(user.id)
+    result = restorer.restore_session(session_id)
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Session not found or access denied")
+    
+    session = result["session"]
+    messages = result["messages"]
+    
+    return {
+        "session_id": session.id,
+        "title": session.title,
+        "model": session.model,
+        "session_key": session.session_key,
+        "system_prompt": result["system_prompt"],
+        "messages": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "created_at": m.created_at
+            }
+            for m in messages
+        ],
+        "restored": True
+    }
+
+
+@app.get("/api/sessions/resumable")
+async def get_resumable_sessions(
+    limit: int = 10,
+    user: User = Depends(get_current_user)
+):
+    """[新增] 获取可恢复的会话列表"""
+    from openharness.enterprise.users.restorer import get_session_restorer
+    
+    restorer = get_session_restorer(user.id)
+    sessions = restorer.get_resumable_sessions(limit)
+    
+    return {"sessions": sessions}
+
+
+@app.post("/api/learning/extract")
+async def trigger_learning(
+    user: User = Depends(get_current_user)
+):
+    """[新增] 手动触发用户信息提取（从最近对话）"""
+    from openharness.enterprise.users.learning import get_learning_engine
+    
+    db = get_database()
+    sessions = db.get_user_sessions(user.id, limit=3)
+    
+    if not sessions:
+        return {"status": "skipped", "reason": "no_conversations"}
+    
+    # 获取最近对话的消息
+    all_messages = []
+    for session in sessions:
+        messages = db.get_session_messages(session.id, limit=20)
+        all_messages.extend([
+            {"role": m.role, "content": m.content}
+            for m in messages
+        ])
+    
+    learning_engine = get_learning_engine(user.id)
+    user_info = learning_engine.extract_user_info(all_messages)
+    
+    if user_info:
+        learning_engine.update_user_profile(user_info)
+        return {"status": "success", "extracted": user_info}
+    
+    return {"status": "skipped", "reason": "no_info_found"}
+
+
+# ============================================================================
+# Meditate API [新增]
+# ============================================================================
+
+@app.post("/api/meditate")
+async def trigger_meditate(
+    date: Optional[str] = None,
+    user: User = Depends(get_current_user)
+):
+    """[新增] 手动触发 Meditate（记忆反思与整合）"""
+    from openharness.enterprise.users.meditate import get_meditate_executor
+    
+    executor = get_meditate_executor(user.id)
+    result = await executor.execute_async(date)
+    
+    return result
+
+
+@app.post("/api/meditate/all")
+async def trigger_meditate_all(
+    user: User = Depends(require_admin)
+):
+    """[新增] 管理员触发所有用户的 Meditate"""
+    from openharness.enterprise.users.meditate import get_meditate_scheduler
+    
+    scheduler = get_meditate_scheduler()
+    results = await scheduler.run_daily_async()
+    
+    return {
+        "status": "completed",
+        "users_processed": len(results),
+        "results": results
+    }
 
 
 # ============================================================================

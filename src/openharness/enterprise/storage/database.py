@@ -44,6 +44,11 @@ class Session(BaseModel):
     updated_at: Optional[datetime] = None
     message_count: int = 0
     is_active: bool = True
+    
+    # [新增] 会话恢复字段
+    system_prompt: Optional[str] = None   # 系统提示词（用于恢复）
+    model: Optional[str] = None           # 使用的模型
+    session_key: Optional[str] = None     # 会话主题 key
 
 
 class Message(BaseModel):
@@ -143,9 +148,28 @@ class Database:
                 updated_at TIMESTAMP,
                 message_count INTEGER DEFAULT 0,
                 is_active BOOLEAN DEFAULT 1,
+                system_prompt TEXT,
+                model TEXT,
+                session_key TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
+        
+        # [新增] 迁移：添加新列到现有数据库
+        try:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN system_prompt TEXT")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+        
+        try:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN model TEXT")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+        
+        try:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN session_key TEXT")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
         
         # Messages table
         cursor.execute("""
@@ -402,15 +426,52 @@ class Database:
         self,
         session_id: str,
         user_id: int,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        model: Optional[str] = None,          # [新增]
+        session_key: Optional[str] = None     # [新增]
     ) -> Session:
         """Create a new session."""
         cursor = self._conn.cursor()
         cursor.execute("""
-            INSERT INTO sessions (id, user_id, title)
-            VALUES (?, ?, ?)
-        """, (session_id, user_id, title))
+            INSERT INTO sessions (id, user_id, title, model, session_key)
+            VALUES (?, ?, ?, ?, ?)
+        """, (session_id, user_id, title, model, session_key))
         self._conn.commit()
+        
+        return self.get_session(session_id)
+    
+    def update_session(
+        self,
+        session_id: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Optional[Session]:
+        """[新增] Update session fields (for session persistence)."""
+        cursor = self._conn.cursor()
+        
+        updates = []
+        values = []
+        
+        if system_prompt is not None:
+            updates.append("system_prompt = ?")
+            values.append(system_prompt)
+        
+        if model is not None:
+            updates.append("model = ?")
+            values.append(model)
+        
+        if title is not None:
+            updates.append("title = ?")
+            values.append(title)
+        
+        if updates:
+            values.append(session_id)
+            cursor.execute(
+                f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?",
+                values
+            )
+            self._conn.commit()
         
         return self.get_session(session_id)
     
@@ -433,7 +494,7 @@ class Database:
         if active_only:
             cursor.execute("""
                 SELECT * FROM sessions
-                WHERE user_id = ? AND is_active = 'TRUE' AND message_count > 0
+                WHERE user_id = ? AND is_active IN (1, 'TRUE') AND message_count > 0
                 ORDER BY updated_at DESC, created_at DESC
                 LIMIT ?
             """, (user_id, limit))
@@ -501,6 +562,10 @@ class Database:
             updated_at=self._parse_datetime(row["updated_at"]),
             message_count=row["message_count"],
             is_active=row["is_active"],
+            # [修复] sqlite3.Row 没有 .get() 方法，使用安全索引访问
+            system_prompt=row["system_prompt"] if "system_prompt" in row.keys() else None,
+            model=row["model"] if "model" in row.keys() else None,
+            session_key=row["session_key"] if "session_key" in row.keys() else None,
         )
     
     # ------------------------------------------------------------------------

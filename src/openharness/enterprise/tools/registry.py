@@ -17,6 +17,8 @@ from pydantic import BaseModel
 from enum import Enum
 import inspect
 
+from openharness.enterprise.config.settings import get_settings
+
 
 class ToolCategory(str, Enum):
     """Tool category."""
@@ -658,7 +660,8 @@ class ToolExecutor:
         import urllib.request
         
         try:
-            with urllib.request.urlopen(url, timeout=30) as response:
+            timeout = get_settings().tool_timeout
+            with urllib.request.urlopen(url, timeout=timeout) as response:
                 content = response.read().decode('utf-8')
                 # Truncate large responses
                 if len(content) > 10000:
@@ -780,7 +783,8 @@ class ToolExecutor:
             )
             
             # Execute request
-            with urllib.request.urlopen(req, timeout=30) as response:
+            timeout = get_settings().tool_timeout
+            with urllib.request.urlopen(req, timeout=timeout) as response:
                 response_body = response.read().decode("utf-8")
                 
                 # Try to parse JSON response

@@ -32,6 +32,7 @@ class UserContext(BaseModel):
     - User soul (personality)
     - Available skills (personal + shared)
     - User preferences
+    - Memory context (from MEMORY.md + daily memories)
     """
     
     user_id: int
@@ -47,6 +48,10 @@ class UserContext(BaseModel):
     
     # Content
     soul: str = ""
+    identity: str = ""      # [新增] AI 身份
+    user_profile: str = ""  # [新增] 用户画像
+    memory: str = ""        # [新增] 记忆内容
+    bootstrap: str = ""      # [新增] 首次启动引导
     
     # Available resources
     available_skills: List[str] = []
@@ -91,6 +96,14 @@ class ContextLoader:
         # Load preferences
         preferences = self._load_json(workspace_path / "config" / "preferences.json")
         
+        # [新增] Load memory context
+        memory = self._load_memory_context(user.id)
+        
+        # [新增] Load identity and user profile
+        identity = self._load_file(workspace_path / "identity.md")
+        user_profile = self._load_file(workspace_path / "user.md")
+        bootstrap = self._load_file(workspace_path / "BOOTSTRAP.md")
+        
         # Get available skills
         personal_skills = self._scan_skills(workspace_path / "skills")
         shared_skills = self._get_shared_skills_for_user(user.id)
@@ -109,10 +122,32 @@ class ContextLoader:
             soul_path=config.soul_path,
             skills_path=str(workspace_path / "skills"),
             soul=soul,
+            identity=identity,       # [新增]
+            user_profile=user_profile,  # [新增]
+            memory=memory,
+            bootstrap=bootstrap,      # [新增]
             available_skills=personal_skills + shared_skills,
             available_plugins=personal_plugins + shared_plugins,
             preferences=preferences
         )
+    
+    def _load_memory_context(self, user_id: int) -> str:
+        """
+        [新增] Load memory context for user.
+        
+        Loads:
+        - Long-term memory (MEMORY.md)
+        - Recent daily memories (last 7 days)
+        
+        Returns:
+            Combined memory context string
+        """
+        from openharness.enterprise.users.memory import get_memory_manager
+        
+        memory_mgr = get_memory_manager(user_id)
+        
+        # Build memory context (long-term + recent daily)
+        return memory_mgr.build_memory_context(include_daily=True)
     
     def _load_file(self, path: str | Path) -> str:
         """Load file content."""

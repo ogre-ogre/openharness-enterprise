@@ -115,6 +115,11 @@ class WorkspaceManager:
         self._create_default_memory(workspace_path, user)
         self._create_default_config(workspace_path, user)
         
+        # [新增] 创建新模板文件
+        self._create_default_identity(workspace_path, user)
+        self._create_default_user_profile(workspace_path, user)
+        self._create_bootstrap(workspace_path, user)
+        
         return workspace_path
     
     def _create_default_soul(self, workspace_path: Path, user: User) -> None:
@@ -184,9 +189,132 @@ class WorkspaceManager:
             }
             provider_path.write_text(json.dumps(provider, indent=2), encoding="utf-8")
     
+    def _create_default_identity(self, workspace_path: Path, user: User) -> None:
+        """
+        [新增] Create default identity.md file.
+        
+        首次对话时 AI 会自动填充内容。
+        """
+        identity_path = workspace_path / "identity.md"
+        
+        if not identity_path.exists():
+            content = f"""# IDENTITY.md - AI 身份定义
+
+- **名称**: 
+- **角色定位**: 
+- **交流风格**: 
+- **签名特征**: 
+
+*此文件会在首次对话时由 AI 自动填充，保持简短具体。*
+"""
+            identity_path.write_text(content, encoding="utf-8")
+    
+    def _create_default_user_profile(self, workspace_path: Path, user: User) -> None:
+        """
+        [新增] Create default user.md file.
+        
+        首次对话时 AI 会自动填充内容。
+        """
+        user_path = workspace_path / "user.md"
+        
+        if not user_path.exists():
+            content = f"""# USER.md - 关于我的用户
+
+## 基本信息
+
+- **姓名**: 
+- **称呼**: 
+- **时区**: 
+- **语言**: 
+
+## 工作偏好
+
+- **常用项目**: 
+- **典型工作时间**: 
+- **期望的回答风格**: 
+- **决策风格**: 
+
+## 当前上下文
+
+- **主要项目**: 
+- **当前优先级**: 
+- **常用工具和平台**: 
+
+## 偏好设置
+
+- **通常希望更多**: 
+- **容易恼火的事情**: 
+- **需要谨慎处理**: 
+
+## 关系笔记
+
+我应该如何为这个用户服务？是什么样的助手关系：
+- 简洁干练的操作者
+- 深思熟虑的伙伴
+- 有组织的办公厅主任
+- 冷静的技术伙伴
+- 其他：
+
+## 备注
+
+记下太重要而不能忘记但又太小不值得专门建记忆文件的事实。
+
+*此文件会在首次对话时由 AI 自动学习并填充。*
+"""
+            user_path.write_text(content, encoding="utf-8")
+    
+    def _create_bootstrap(self, workspace_path: Path, user: User) -> None:
+        """
+        [新增] Create BOOTSTRAP.md file for first-time onboarding.
+        
+        这个文件会在首次对话完成后被删除。
+        """
+        bootstrap_path = workspace_path / "BOOTSTRAP.md"
+        
+        if not bootstrap_path.exists():
+            content = f"""# BOOTSTRAP.md - 首次启动
+
+你刚刚在一个全新的个人工作区上线。
+
+你的任务不是审问用户。要自然开始，然后学得足够变得有用。
+
+## 首次对话目标
+
+1. **了解你是谁**
+   - 你应该怎么称呼？
+   - 什么样的助手关系感觉合适？
+   - 你应该有什么风格？
+
+2. **了解用户 essentials**
+   - 我应该怎么称呼你？
+   - 你在哪个时区？
+   - 你最近在做什么？
+   - 你最常想要什么帮助？
+
+3. **让工作区变得真实**
+   - 更新 `IDENTITY.md`
+   - 更新 `USER.md`
+   - 如果有什么持久的很重要，写到 `memory/` 里
+
+## 风格
+
+- 不要丢出一堆问卷
+- 从一个简单、人性化的开头开始
+- 问几个高价值的问题，而不是二十个低价值的问题
+- 当用户不确定时提供建议
+
+## 完成时
+
+初始落地完成后，这个文件可以删除。
+如果后来消失了，不要假设它应该回来。
+"""
+            bootstrap_path.write_text(content, encoding="utf-8")
+    
     def get_workspace_config(self, user_id: int) -> UserWorkspaceConfig:
         """
         Get user workspace configuration.
+        
+        [新增] 同时确保新模板文件存在
         
         Args:
             user_id: User ID
@@ -195,6 +323,17 @@ class WorkspaceManager:
             Workspace config
         """
         workspace_path = get_user_workspace_path(user_id)
+        
+        # [新增] 确保新模板文件存在（兼容现有用户）
+        from openharness.enterprise.storage.database import get_database
+        try:
+            user = get_database().get_user(user_id)
+            if user:
+                self._create_default_identity(workspace_path, user)
+                self._create_default_user_profile(workspace_path, user)
+                self._create_bootstrap(workspace_path, user)
+        except Exception:
+            pass  # 忽略错误，不影响主要功能
         
         return UserWorkspaceConfig(
             memory_path=str(workspace_path / "memory"),

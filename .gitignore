@@ -57,3 +57,23 @@ web/.vite/
 *.key
 .env
 .env.local
+
+# Dev/test scripts (root directory)
+/check_*.py
+/test_*.py
+/fix_*.py
+/debug_*.py
+/upload_*.py
+/compile_*.py
+/start_*.py
+/restart_*.py
+/deploy_*.py
+/install_*.py
+/quick_*.py
+/reload_*.py
+/final_*.py
+/full_*.py
+/download_*.py
+/build-*.py
+/build-*.ps1
+/build-*.sh
