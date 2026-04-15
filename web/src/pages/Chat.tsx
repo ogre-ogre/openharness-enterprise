@@ -165,6 +165,11 @@ export default function Chat() {
         }
         break
       
+      case 'status':
+        // [新增] 处理状态消息（简洁的状态提示）
+        setIsThinking(true)
+        break
+      
       case 'thinking':
         setIsThinking(true)
         break

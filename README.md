@@ -38,64 +38,218 @@
   - 恢复前验证会话归属（安全隔离）
   - System Prompt 构建顺序：Soul → Identity → User Profile → Memory
 
-## 快速开始
+## 本地开发环境启动指南
 
 ### 环境要求
 
-- Python 3.10+
-- Node.js 18+ (前端开发)
-- uv (Python 包管理器)
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Python | 3.10+ | 后端运行环境 |
+| uv | 最新 | Python 包管理器（推荐） |
+| Node.js | 18+ | 前端开发环境 |
 
-### 启动后端
-
-```bash
-# 方式一：使用脚本
-scripts\start-server.bat
-
-# 方式二：手动启动
-cd D:\openharness-enterprise
-uv sync --extra dev
-uv run oh-enterprise init     # 首次运行初始化
-uv run oh-enterprise start --port 8000
-```
-
-### 启动前端
-
-```bash
-# 方式一：使用脚本
-scripts\start-frontend.bat
-
-# 方式二：手动启动
-cd D:\openharness-enterprise\web
-npm install
-npm run dev
-```
-
-### 配置 LLM
+#### 安装 uv（如果未安装）
 
 ```bash
 # Windows PowerShell
-$env:ANTHROPIC_AUTH_TOKEN = "your-api-key"
-$env:ANTHROPIC_BASE_URL = "https://coding.dashscope.aliyuncs.com/apps/anthropic"
-$env:ANTHROPIC_MODEL = "glm-5"
+irm https://astral.sh/uv/install.ps1 | iex
 
 # Linux/macOS
-export ANTHROPIC_AUTH_TOKEN="your-api-key"
-export ANTHROPIC_BASE_URL="https://coding.dashscope.aliyuncs.com/apps/anthropic"
-export ANTHROPIC_MODEL="glm-5"
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 访问
+---
 
-- **前端**: http://localhost:3000
-- **API 文档**: http://localhost:8000/docs
-- **健康检查**: http://localhost:8000/health
+### 第一步：克隆项目
 
-### 默认管理员
+```bash
+git clone <repository-url>
+cd openharness-enterprise
+```
 
-- 用户名: `admin`
-- 密码: `admin123`
-- API Key: 初始化时生成并显示
+---
+
+### 第二步：配置环境变量
+
+创建 `.env` 文件（或复制 `.env.example`）：
+
+```bash
+# 复制模板
+cp .env.example .env
+```
+
+编辑 `.env` 文件，配置 LLM 服务：
+
+```bash
+# 必须配置 - LLM 提供商和 API Key
+OH_PROVIDER=bailian           # 可选: anthropic, openai, openai-compatible, bailian, zhipu, deepseek
+OH_API_KEY=your-api-key-here  # 你的 API Key
+
+# 可选配置
+OH_MODEL=glm-5                # 模型名称
+OH_BASE_URL=https://xxx       # 自定义 API 地址（部分提供商需要）
+```
+
+**常用 LLM 配置示例：**
+
+```bash
+# 百炼（阿里云）
+OH_PROVIDER=bailian
+OH_API_KEY=sk-xxx
+OH_MODEL=glm-5
+
+# 智谱 AI
+OH_PROVIDER=zhipu
+OH_API_KEY=xxx.xxx
+OH_MODEL=glm-4
+
+# DeepSeek
+OH_PROVIDER=deepseek
+OH_API_KEY=sk-xxx
+OH_MODEL=deepseek-chat
+
+# OpenAI 兼容接口
+OH_PROVIDER=openai-compatible
+OH_API_KEY=sk-xxx
+OH_BASE_URL=https://your-api-endpoint
+OH_MODEL=gpt-4
+```
+
+---
+
+### 第三步：启动后端服务
+
+#### 方式一：使用启动脚本（Windows）
+
+```bash
+# 双击运行，或在命令行执行
+scripts\start-server.bat
+```
+
+#### 方式二：手动启动（推荐开发使用）
+
+```bash
+cd D:\openharness-enterprise
+
+# 1. 安装依赖
+uv sync --extra dev
+
+# 2. 首次运行初始化（创建数据库、管理员账号等）
+uv run oh-enterprise init
+
+# 3. 启动服务
+uv run oh-enterprise start --port 8000
+```
+
+**后端启动成功后：**
+- API 服务: http://localhost:8000
+- API 文档: http://localhost:8000/docs
+- 健康检查: http://localhost:8000/health
+
+---
+
+### 第四步：启动前端服务（可选）
+
+如果需要 Web 界面，启动前端开发服务器：
+
+#### 方式一：使用启动脚本（Windows）
+
+```bash
+# 双击运行，或在命令行执行
+scripts\start-frontend.bat
+```
+
+#### 方式二：手动启动
+
+```bash
+cd D:\openharness-enterprise\web
+
+# 1. 安装依赖
+npm install
+
+# 2. 启动开发服务器
+npm run dev
+```
+
+**前端启动成功后：**
+- Web 界面: http://localhost:3000
+
+---
+
+### 默认账号
+
+首次 `init` 后自动创建管理员账号：
+
+| 字段 | 值 |
+|------|-----|
+| 用户名 | `admin` |
+| 密码 | `admin123` |
+| API Key | 初始化时自动生成，显示在终端输出 |
+
+> ⚠️ 生产环境请立即修改默认密码！
+
+---
+
+### 验证安装
+
+```bash
+# 检查后端健康状态
+curl http://localhost:8000/health
+
+# 预期返回
+{"status": "healthy", "version": "x.x.x"}
+```
+
+---
+
+### 常见问题
+
+#### 1. 端口被占用
+
+```bash
+# 查看端口占用（Windows）
+netstat -ano | findstr :8000
+
+# 使用其他端口
+uv run oh-enterprise start --port 8080
+```
+
+#### 2. 依赖安装失败
+
+```bash
+# 清理缓存重新安装
+uv cache clean
+uv sync --extra dev --reinstall
+```
+
+#### 3. 数据库初始化失败
+
+```bash
+# 删除旧数据重新初始化
+rm -rf ~/.oh-enterprise
+uv run oh-enterprise init
+```
+
+#### 4. 前端连接后端失败
+
+检查 `web/.env` 或 `web/.env.local` 中的 API 地址配置：
+
+```bash
+# web/.env.local
+VITE_API_URL=http://localhost:8000
+```
+
+---
+
+### 开发模式热重载
+
+后端使用 `--reload` 参数启用热重载：
+
+```bash
+uv run uvicorn openharness.enterprise.server:app --reload --port 8000
+```
+
+前端默认启用热重载，修改代码自动刷新。
 
 ## 目录结构
 

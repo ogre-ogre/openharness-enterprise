@@ -38,6 +38,7 @@ dependencies = [
     "python-multipart>=0.0.9",           # 表单处理
     "aiosqlite>=0.19.0",                 # 异步 SQLite
     "sse-starlette>=2.0.0",              # A2A SSE 流式响应
+    "paramiko>=3.0.0",                   # SSH 远程管理
 ]
 
 [project.optional-dependencies]
